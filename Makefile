@@ -7,14 +7,16 @@ CC = gcc
 CFLAGS = -W -pthread
 
 # Le nom de l’exécutable à fabriquer
-EXE=server
+EXE1=server
+EXE2=client
 
 # all
-all: $(EXE)
+all: $(EXE1) $(EXE2)
 
-client : client.o socket.o
+$(EXE1): server.o socket.o
 	 $(CC) $^ $(CFLAGS) -o $@
-$(EXE): server.o socket.o
+
+$(EXE2): client.o socket.o
 	 $(CC) $^ $(CFLAGS) -o $@
 
 %.o: %.c
@@ -25,4 +27,4 @@ clean:
 	rm -rf *.bak rm -rf *.o rm rm *~
 # mrproper
 mrproper: clean
-	rm -rf $(EXE) 
+	rm -rf $(EXE1) $(EXE2) 
