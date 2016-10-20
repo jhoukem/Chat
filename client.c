@@ -3,20 +3,22 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+#include "socket.h"
 
 #define BUF_SIZ 1024
+#define PSEUDO_MAX_SIZE 15
 
 
-
-int handle_input(char * pseudo, int socket_client)
+int handle_input(int socket_client)
 {
-  char buffer[BUF_SIZ];
-  char msg[BUF_SIZ * 2];
+  char msg[BUF_SIZ];
   //keep communicating with server
   while(1){
     printf("Enter message : ");
-    fgets(buffer, BUF_SIZ, stdin);
-    sprintf(msg, "%s: %s", pseudo, buffer);
+    fgets(msg, BUF_SIZ, stdin);
     //Send some data
     if(send(socket_client, msg , strlen(msg) + 1 , 0) < 0){
       perror("send");
@@ -24,6 +26,7 @@ int handle_input(char * pseudo, int socket_client)
       return 1;
     }
   }
+  printf("out\n");
   return 0;
 }
 
@@ -42,6 +45,15 @@ int handle_listen(int socket_client)
   }
   return 0;
 }
+
+int send_pseudo(int socket_client, char * pseudo)
+{
+  if(send(socket_client, pseudo , PSEUDO_MAX_SIZE + 1 , 0) < 0){
+    return -1;
+  }
+  return 0;
+}
+
 
 int main(int argc, char * argv[])
 {
@@ -73,11 +85,16 @@ int main(int argc, char * argv[])
     return 1;
   }
   printf("Connected to %s\n", hostname);
+
+  if(send_pseudo(socket_client, pseudo) < 0){
+    printf("Can't send the pseudo to the server\n");
+    return -1;
+  }
   
   switch(fork()){
-  case -1 : perror("fork"); return -1;
+  case -1 : perror("fork()"); return -1;
   case 0: handle_listen(socket_client); exit(0); break;
-  default: handle_input(pseudo, socket_client); break;
+  default: handle_input(socket_client); break;
   }
   wait(NULL);
 

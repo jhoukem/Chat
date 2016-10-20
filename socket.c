@@ -7,7 +7,6 @@
 int create_socket_client()
 {
   int socket_client;
-  struct sockaddr_in server;
      
   //Create socket
   socket_client = socket(AF_INET , SOCK_STREAM , 0);
