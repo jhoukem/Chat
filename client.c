@@ -9,18 +9,18 @@
 #include "socket.h"
 
 #define BUF_SIZ 1024
-#define PSEUDO_MAX_SIZE 15
+#define PSEUDO_MAX_SIZE 10
 
 
 int handle_input(int socket_client)
 {
   char msg[BUF_SIZ];
-  //keep communicating with server
+  // Keep communicating with the server.
   while(1){
-    printf("Enter message : ");
+    printf("\nEnter a message : ");
     fgets(msg, BUF_SIZ, stdin);
     //Send some data
-    if(send(socket_client, msg , strlen(msg) + 1 , 0) < 0){
+    if(write(socket_client, msg , strlen(msg) + 1) < 0){
       perror("send");
       printf("Failed to send message: \"%s\"\n", msg);
       return 1;
@@ -33,22 +33,22 @@ int handle_input(int socket_client)
 
 int handle_listen(int socket_client)
 {
-  char buffer[BUF_SIZ];
+  char buffer[BUF_SIZ + PSEUDO_MAX_SIZE];
  
   while(1){
-    //Receive a reply from the server
-    if(recv(socket_client, buffer, BUF_SIZ, 0) <= 0){
-      printf("\nConnection closed\n");
+    // Receive a reply from the server.
+    if(read(socket_client, buffer, BUF_SIZ) <= 0){
+      printf("\nConnection closed");
       break;
     }
-    printf("\n%s\n", buffer);
+    printf("\n%s", buffer);
   }
   return 0;
 }
 
 int send_pseudo(int socket_client, char * pseudo)
 {
-  if(send(socket_client, pseudo , PSEUDO_MAX_SIZE + 1 , 0) < 0){
+  if(send(socket_client, pseudo , PSEUDO_MAX_SIZE, 0) < 0){
     return -1;
   }
   return 0;
@@ -68,7 +68,7 @@ int main(int argc, char * argv[])
     return -1;
   }
 
-  // Set server to connect parameters.
+  // Set the server to connect parameters.
   hostname = argv[1];
   port = atoi(argv[2]);
   pseudo = argv[3];
@@ -79,7 +79,7 @@ int main(int argc, char * argv[])
   // Create client's socket.
   socket_client = create_socket_client();
 
-  //Connect to remote server
+  // Connect to the remote server.
   if(connect(socket_client , (struct sockaddr *)&server , sizeof(server)) < 0){
     perror("Connection failed");
     return 1;
