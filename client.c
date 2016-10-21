@@ -5,8 +5,9 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-
+#include <signal.h>
 #include "socket.h"
+#include "sig.h"
 
 #define BUF_SIZ 1024
 #define PSEUDO_MAX_SIZE 10
@@ -21,29 +22,27 @@ int handle_input(int socket_client)
     fgets(msg, BUF_SIZ, stdin);
     //Send some data
     if(write(socket_client, msg , strlen(msg) + 1) < 0){
-      perror("send");
+      perror("write");
       printf("Failed to send message: \"%s\"\n", msg);
-      return 1;
+      return -1;
     }
   }
-  printf("out\n");
   return 0;
 }
 
 
-int handle_listen(int socket_client)
+void handle_listen(int socket_client)
 {
   char buffer[BUF_SIZ + PSEUDO_MAX_SIZE];
  
   while(1){
     // Receive a reply from the server.
     if(read(socket_client, buffer, BUF_SIZ) <= 0){
-      printf("\nConnection closed");
-      break;
+      printf("\nConnection closed\n");
+      exit(0);;
     }
     printf("\n%s", buffer);
   }
-  return 0;
 }
 
 int send_pseudo(int socket_client, char * pseudo)
@@ -62,6 +61,7 @@ int main(int argc, char * argv[])
   char * hostname;
   char * pseudo;
   struct sockaddr_in server;
+  pid_t child_pid;
 
   if(argc < 4){
     printf("Bad usage: %s [host_address] [port_number] [pseudo]\n", argv[0]);
@@ -91,11 +91,14 @@ int main(int argc, char * argv[])
     return -1;
   }
   
-  switch(fork()){
+  switch((child_pid = fork())){
   case -1 : perror("fork()"); return -1;
-  case 0: handle_listen(socket_client); exit(0); break;
-  default: handle_input(socket_client); break;
+  case 0: handle_listen(socket_client); break;
+  default: init_sig(); handle_input(socket_client); break;
   }
+
+  // If the father exit the default statement he need to kill his child.
+  kill(child_pid, SIGINT);
   wait(NULL);
 
   return 0;

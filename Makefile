@@ -4,8 +4,8 @@
 .SUFFIXES:
 # définition des variables
 CC = gcc
-CFLAGS = -W -Wall -pthread
-
+CFLAGS = -W -Wall
+CFLAGS_T = -pthread
 # Le nom de l’exécutable à fabriquer
 EXE1=server
 EXE2=client
@@ -14,9 +14,9 @@ EXE2=client
 all: $(EXE1) $(EXE2)
 
 $(EXE1): server.o socket.o
-	 $(CC) $^ $(CFLAGS) -o $@
+	 $(CC) $^ $(CFLAGS) $(CFLAGS_T) -o $@
 
-$(EXE2): client.o socket.o
+$(EXE2): client.o socket.o sig.o
 	 $(CC) $^ $(CFLAGS) -o $@
 
 %.o: %.c
