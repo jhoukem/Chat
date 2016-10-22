@@ -6,6 +6,7 @@
 CC = gcc
 CFLAGS = -W -Wall
 CFLAGS_T = -pthread
+LDFLAGS = -lncurses
 # Le nom de l’exécutable à fabriquer
 EXE1=server
 EXE2=client
@@ -13,11 +14,11 @@ EXE2=client
 # all
 all: $(EXE1) $(EXE2)
 
-$(EXE1): server.o socket.o
+$(EXE1): server.o socket.o util.o
 	 $(CC) $^ $(CFLAGS) $(CFLAGS_T) -o $@
 
-$(EXE2): client.o socket.o sig.o
-	 $(CC) $^ $(CFLAGS) -o $@
+$(EXE2): client.o socket.o sig.o util.o
+	 $(CC) $^ $(CFLAGS) $(LDFLAGS) $(CFLAGS_T) -o $@
 
 %.o: %.c
 	$(CC) -o $@ -c $< $(CFLAGS)

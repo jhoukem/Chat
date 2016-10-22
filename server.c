@@ -7,12 +7,13 @@
 #include <unistd.h>
 #include "server.h"
 #include "socket.h"
+#include "util.h"
 
 #define CLIENT_MAX 10
 #define BUF_SIZ 1024
 #define PSEUDO_MAX_SIZE 10
 
-void send_to_clients_except(arg_t thread_arg, char * msg)
+void send_to_clients_except(arg_s thread_arg, char * msg)
 {
   int i;
   // Send the message to all the clients.
@@ -24,7 +25,19 @@ void send_to_clients_except(arg_t thread_arg, char * msg)
   }
 }
 
-void free_thread_rsc(arg_t thread_arg)
+void send_to_clients(arg_s thread_arg, char * msg)
+{
+  int i;
+  // Send the message to all the clients.
+  for(i = 0; i < CLIENT_MAX; i++){
+    // Don't send the message back to a null socket.
+    if(thread_arg->socket_clients[i] != 0){ 
+      write(thread_arg->socket_clients[i] , msg , strlen(msg) + 1);
+    }
+  }
+}
+
+void free_thread_rsc(arg_s thread_arg)
 {
   // Close the old socket and set it to 0 in the socket_clients tab.
   close(thread_arg->socket_clients[thread_arg->idx]);
@@ -40,7 +53,7 @@ void free_thread_rsc(arg_t thread_arg)
 
 void * handle_client(void * arg)
 {
-  arg_t thread_arg = (arg_t) arg;
+  arg_s thread_arg = (arg_s) arg;
   int read_size;
   char buffer[BUF_SIZ];
   char client_msg[BUF_SIZ+PSEUDO_MAX_SIZE];
@@ -51,11 +64,15 @@ void * handle_client(void * arg)
 
   // Receive a message from the client.
   while((read_size = read(thread_arg->socket_clients[thread_arg->idx] , buffer , BUF_SIZ)) > 0 ){
-    
-    // Add the client pseudo to the message.
-    snprintf(client_msg, PSEUDO_MAX_SIZE, "%s: ", thread_arg->pseudo);
-    strncat(client_msg, buffer, BUF_SIZ);  
-    send_to_clients_except(thread_arg, client_msg);
+    // printf("Server received: %s\n", buffer);
+    // Don't send empty message.
+    // This was also checked in the client but the server perform a second check.
+    if(!is_empty(buffer)){
+      // Add the client pseudo to the message.
+      snprintf(client_msg, PSEUDO_MAX_SIZE, "%s: ", thread_arg->pseudo);
+      strncat(client_msg, buffer, BUF_SIZ);  
+      send_to_clients(thread_arg, client_msg);
+    }
   }
   
   if(read_size == 0) {
@@ -97,7 +114,7 @@ int accept_client(int socket_server, int * socket_clients, int * counter_client,
   int idx;
   int socket_acc;
   pthread_t thread_client;
-  arg_t thread_arg = NULL;
+  arg_s thread_arg = NULL;
   char * pseudo;
   pseudo = malloc(PSEUDO_MAX_SIZE * sizeof(char));
   
@@ -128,7 +145,7 @@ int accept_client(int socket_server, int * socket_clients, int * counter_client,
   pthread_mutex_unlock(counter_lock);
   
   // Set the data for the client.  
-  thread_arg =  (arg_t) malloc(sizeof(struct thread_arg));
+  thread_arg =  (arg_s) malloc(sizeof(struct thread_arg_s));
   thread_arg->socket_clients = socket_clients;
   thread_arg->idx = idx;
   thread_arg->counter_client = counter_client;

@@ -1,20 +1,17 @@
 #include <signal.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <curses.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 
 void handle_sig(int sig)
-{ 
-  if (sig == SIGCHLD){
-    int status;
-    while(waitpid(-1, &status, WNOHANG) > 0){
-      if (WIFSIGNALED(status)){
-	printf("Child killed by signal: %d\n", WTERMSIG(status));
-      }
-    }
+{
+  if (sig == SIGINT){
+    endwin();
+    exit(0);
   }
-  exit(0);
 }
 
 void init_sig()
@@ -24,7 +21,7 @@ void init_sig()
   sa.sa_handler = handle_sig;
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_RESTART;
-  if (sigaction(SIGCHLD, &sa ,NULL) == -1){
-    perror("sigaction(SIGCHLD)");
+  if (sigaction(SIGINT, &sa ,NULL) == -1){
+    perror("sigaction(SIGINT)");
   }
 }
