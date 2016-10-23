@@ -12,17 +12,18 @@
 #include "util.h"
 #include "sig.h"
 
+
 #define BUF_SIZ 1024
 #define PSEUDO_MAX_SIZE 10
 
 void add_to_chat(arg_c thread_arg, char * text)
 {
 
-  mvwprintw(thread_arg->chat, *thread_arg->line, 1, text);
+  mvwprintw(thread_arg->chat, *thread_arg->line, 0, text);
 
   // Set the line position.
   if((*thread_arg->line) >= thread_arg->chat->_maxy){
-    wscrl(thread_arg->chat, 1);
+    scroll(thread_arg->chat);
   } else {
     // will stop increment at the window maxy
     (*thread_arg->line)++; 
@@ -39,34 +40,12 @@ void draw_line(WINDOW *screen)
   }
 }
 
-void draw_borders(WINDOW *screen)
-{
-  int x, y, i;
-  getmaxyx(screen, y, x);
-   // 4 corners
-  mvwprintw(screen, 0, 0, "+");
-  mvwprintw(screen, y - 1, 0, "+");
-  mvwprintw(screen, 0, x - 1, "+");
-  mvwprintw(screen, y - 1, x - 1, "+");
-  // sides 
-  for (i = 1; i < (y - 1); i++) {
-    mvwprintw(screen, i, 0, "|");
-    mvwprintw(screen, i, x - 1, "|");
-  }
-  // top and bottom
-  for (i = 1; i < (x - 1); i++) {
-    mvwprintw(screen, 0, i, "_");
-    mvwprintw(screen, y - 1, i, "-");
-  }
-}
-
-
 void * handle_input(void * arg)
 {
   arg_c input_arg = (arg_c) arg; 
   char msg[BUF_SIZ];
   char input_title[] = "Enter a message";
-  
+
   while(!(*input_arg->stop)){
     // Clear screen.
     wclear(input_arg->input);
@@ -98,14 +77,12 @@ void * handle_listen(void * arg)
   arg_c listen_arg = (arg_c) arg;
 
   // Enable the scrolling.
-  idlok(listen_arg->chat, TRUE);
   scrollok(listen_arg->chat, TRUE);
- 
   draw_line(listen_arg->chat);
   // Center the window title.
   mvwprintw(listen_arg->chat, 0, (listen_arg->chat->_maxx/2) - (strlen(chat_title)/2), chat_title);
   wrefresh(listen_arg->chat);
-  while(1){    
+  while(1){
     // Receive a reply from the server.
     if(read(listen_arg->socket, buffer, BUF_SIZ) <= 0){
       // Connection closed.
@@ -126,14 +103,15 @@ int send_pseudo(int socket_client, char * pseudo)
   return 0;
 }
 
-
 int main(int argc, char * argv[])
 {
 
   int socket_client, port, input_size, parent_x, parent_y, stop, line;
-  char *hostname, *pseudo;
+  char *pseudo;
   pthread_t thread_input, thread_listen;
   arg_c thread_arg;
+  char ip[100];
+  
   struct sockaddr_in server;
   
   if(argc < 4){
@@ -142,10 +120,11 @@ int main(int argc, char * argv[])
   }
 
   // Set the server to connect parameters.
-  hostname = argv[1];
+  hostname_to_ip(argv[1], ip);
+
   port = atoi(argv[2]);
   pseudo = argv[3];
-  server.sin_addr.s_addr = inet_addr(hostname);
+  server.sin_addr.s_addr = inet_addr(ip);
   server.sin_family = AF_INET;
   server.sin_port = htons(port);
   
@@ -164,9 +143,9 @@ int main(int argc, char * argv[])
     return -1;
   }
 
+  init_sig();
   // Set the ncurses parameters.
   initscr();
-  start_color();
   
   // Get the maximum window dimensions.
   getmaxyx(stdscr, parent_y, parent_x);
@@ -186,7 +165,6 @@ int main(int argc, char * argv[])
   thread_arg->line = &line;
   thread_arg->pseudo = pseudo;
   thread_arg->stop = &stop;
-  init_sig();
   
   // Start a thread that will handle the client input.
   if(pthread_create(&thread_input, NULL, handle_input, (void*) thread_arg)){
