@@ -58,7 +58,11 @@ void * handle_client(void * arg)
   char buffer[BUF_SIZ];
   char client_msg[BUF_SIZ+PSEUDO_MAX_SIZE];
 
-  
+  if(get_client_pseudo(thread_arg->socket_clients[thread_arg->idx], thread_arg->pseudo) != 0){
+    printf("Error no pseudo received from the client %d\n", thread_arg->idx);
+    pthread_exit(NULL);
+  }  
+
   snprintf(client_msg, BUF_SIZ, "%s has joined the chat.", thread_arg->pseudo);
   send_to_clients_except(thread_arg, client_msg);
 
@@ -115,8 +119,6 @@ int accept_client(int socket_server, int * socket_clients, int * counter_client,
   int socket_acc;
   pthread_t thread_client;
   arg_s thread_arg = NULL;
-  char * pseudo;
-  pseudo = malloc(PSEUDO_MAX_SIZE * sizeof(char));
   
   printf("Server waiting for incoming connection...\n");
   
@@ -134,11 +136,6 @@ int accept_client(int socket_server, int * socket_clients, int * counter_client,
     return -1;
   }
 
-  if(get_client_pseudo(socket_acc, pseudo) != 0){
-    printf("Error no pseudo received from the client\n");
-    return 1;
-  }
-  
   // Update the client counter.
   pthread_mutex_lock(counter_lock);
   (*counter_client)++;
@@ -150,12 +147,11 @@ int accept_client(int socket_server, int * socket_clients, int * counter_client,
   thread_arg->idx = idx;
   thread_arg->counter_client = counter_client;
   thread_arg->counter_lock = counter_lock;
-  thread_arg->pseudo = pseudo;
+  thread_arg->pseudo = malloc(PSEUDO_MAX_SIZE * sizeof(char));
   
   // Save the client fd into the server fd tab.
   socket_clients[idx] = socket_acc;
  
-  // printf("accept_client: &pseudo = %p || thread_arg->pseudo = %p\n", &pseudo, thread_arg->pseudo);
   
   // Start a thread that will handle the client.
   if(pthread_create(&thread_client, NULL, handle_client, (void*) thread_arg)){

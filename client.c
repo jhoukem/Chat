@@ -15,6 +15,148 @@
 
 #define BUF_SIZ 1024
 #define PSEUDO_MAX_SIZE 10
+#define DEBUG 0
+
+void rm_ch_from_buffer(WINDOW *input, int x, int y, int width, int nb_ch, char * buffer)
+{
+  int i, pos;
+  pos = x + (width - 1) * (y - 1);
+  // We shift to the left all the end of the buffer
+  for(i = pos; i < nb_ch - 1; i++){
+    buffer[i] = buffer[i + 1];
+    mvwprintw(input, y, x + (i-pos), (char*)&buffer[i]);
+  }
+  buffer[i] = ' ';
+  mvwprintw(input, y, x + (i-pos), (char*)&buffer[i]);
+}
+
+void add_ch_to_buffer(WINDOW *input, int ch, int x, int y, int width, int nb_ch, char * buffer)
+{
+  int i, pos;
+  pos = x + (width -1) * (y - 1);
+  
+  // Add a char at the end of the buffer.
+  if(pos == nb_ch){
+    buffer[pos] = ch;
+    mvwprintw(input, y, x, (char *)&ch);
+
+  }  
+  // Shift all the buffer to the right and
+  // insert a char at the current position.  
+  else {
+
+    for(i = nb_ch; i > pos; i--){
+      buffer[i] = buffer[i - 1];
+      mvwprintw(input, y, i%width , (char*)&buffer[i]);
+    }
+    buffer[i] = ch;
+    mvwprintw(input, y, x, (char*)&buffer[i]);
+  }
+}
+
+int get_input(WINDOW *input, char **buffer, int *stop_flag)
+{
+  int ch, x, y, nb_ch, width;
+  ch = 0;
+  x = 0;
+  y = 1;
+  getmaxyx(input, nb_ch, width);
+  *buffer = memset(*buffer, 0, BUF_SIZ);
+ 
+  nb_ch = 0;
+
+  wmove(input, y, x);
+  wrefresh(input);
+  
+  while((ch = wgetch(input)) != '\n'){
+    /* if(DEBUG){
+      mvwprintw(input, 0, 0, "_____________");
+      mvwprintw(input, 0, 0, "nb_char = %d", nb_ch);
+      wmove(input, y, x);
+      }*/
+    if(*stop_flag){
+      return -1;
+    }
+
+    if(ch == KEY_LEFT){
+      if(x - 1 < 0){
+	if(y > 1){
+	  x = width - 1;
+	  y--;
+	}
+      } else {
+	x--;
+      }
+      wmove(input, y, x);    
+    }
+    else if(ch == KEY_RIGHT){
+      if((x + ((width - 1)*(y-1))) < nb_ch){
+	if((x+1) >= width){
+	  y++;
+	  x = 0;
+	} else {
+	  x++;
+	}	
+	wmove(input, y, x);
+      }
+    }
+    else if(ch == KEY_UP){
+     
+      if(y > 1){
+	/*	if(y == 2){
+	  wscrl(input, -1);
+	  }*/
+	y--;
+      }
+      
+      wmove(input, y, x);
+    }
+    else if(ch == KEY_DOWN){
+      if((nb_ch / (width-1)) >= y ){
+	y++;
+      }
+      
+      if(x > nb_ch % (width)){
+	x = nb_ch % (width);
+      } 
+      
+      wmove(input, y, x);
+    }
+    else if(ch == KEY_BACKSPACE){
+      if(x > 0 || y > 1){	
+	if(x == 0){
+	  y--;
+	  x = width - 1;
+	} else {
+	  x--;
+	}
+	rm_ch_from_buffer(input, x, y, width, nb_ch, *buffer);
+	nb_ch--;
+	// Move the cursor a step back because rm_ch_from_buffer moved it foward.
+	wmove(input, y, x);
+      }
+    }
+    // Only add the regulars char to the buffer.
+    else if(ch > 31 && ch < 127){
+      if(nb_ch < BUF_SIZ - 1){
+	
+	add_ch_to_buffer(input, ch, x, y, width, nb_ch, *buffer);
+	nb_ch++;
+	wmove(input, y, x);
+	if(x + 1 >= width){
+	  x = 0;
+	  y ++;
+	} else {
+	  x++;
+	}
+	wmove(input, y, x);	
+      }
+    }
+    wrefresh(input);
+  }
+  
+  return 0;
+}
 
 void add_to_chat(arg_c thread_arg, char * text)
 {
@@ -43,10 +185,18 @@ void draw_line(WINDOW *screen)
 void * handle_input(void * arg)
 {
   arg_c input_arg = (arg_c) arg; 
-  char msg[BUF_SIZ];
+  char * msg = malloc(sizeof(char) * BUF_SIZ);
   char input_title[] = "Enter a message";
+  
+  cbreak();
+  noecho();
+  nodelay(input_arg->input, TRUE);
+  keypad(input_arg->input, TRUE);
 
-  while(!(*input_arg->stop)){
+  // Enable the scrolling.
+  scrollok(input_arg->input, TRUE);
+
+  while(1){
     // Clear screen.
     wclear(input_arg->input);
     draw_line(input_arg->input);
@@ -57,16 +207,23 @@ void * handle_input(void * arg)
     wrefresh(input_arg->input);
 
     // Get the user input.
-    mvwgetnstr(input_arg->input, 1, 0, msg, BUF_SIZ);
+    //mvwgetnstr(input_arg->input, 1, 0, msg, BUF_SIZ);
+    if(get_input(input_arg->input, &msg, input_arg->stop_flag) < 0){
+      // The server has closed the socket.
+      break;
+    }
+
     if(!is_empty(msg)){
       //Send the user message.
       if(write(input_arg->socket, msg , strlen(msg) + 1) < 0){
 	// Failed to send.
-	pthread_exit(0);
+	free(msg);
+	pthread_exit((void *)-1);
       }
     }
   }
-  pthread_exit(0);
+  free(msg);
+  pthread_exit((void *)-1);
 }
 
 
@@ -86,7 +243,7 @@ void * handle_listen(void * arg)
     // Receive a reply from the server.
     if(read(listen_arg->socket, buffer, BUF_SIZ) <= 0){
       // Connection closed.
-      *listen_arg->stop = 1;
+      *listen_arg->stop_flag = 1;
       pthread_exit(0);
     }
     // Print the text received to the chat windows
@@ -164,7 +321,7 @@ int main(int argc, char * argv[])
   thread_arg->socket = socket_client;
   thread_arg->line = &line;
   thread_arg->pseudo = pseudo;
-  thread_arg->stop = &stop;
+  thread_arg->stop_flag = &stop;
   
   // Start a thread that will handle the client input.
   if(pthread_create(&thread_input, NULL, handle_input, (void*) thread_arg)){
