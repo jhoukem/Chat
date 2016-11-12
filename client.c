@@ -12,10 +12,26 @@
 #include "util.h"
 #include "sig.h"
 
-
 #define BUF_SIZ 1024
 #define PSEUDO_MAX_SIZE 10
 #define DEBUG 0
+#define INPUT_HEIGHT 4
+
+pthread_mutex_t ncurse_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void handle_resize(WINDOW *input, WINDOW *chat)
+{
+  int new_y, new_x; 
+  getmaxyx(stdscr, new_y, new_x);
+  wresize(chat, new_y - INPUT_HEIGHT, new_x);
+  wresize(input, INPUT_HEIGHT, new_x);
+  mvwin(chat, INPUT_HEIGHT, 0);
+  wclear(chat);
+  wclear(input);
+  wrefresh(chat);
+  wrefresh(input);
+ 
+}
 
 void rm_ch_from_buffer(WINDOW *input, int x, int y, int width, int nb_ch, char * buffer)
 {
@@ -54,7 +70,7 @@ void add_ch_to_buffer(WINDOW *input, int ch, int x, int y, int width, int nb_ch,
   }
 }
 
-int get_input(WINDOW *input, char **buffer, int *stop_flag)
+int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag)
 {
   int ch, x, y, nb_ch, width;
   ch = 0;
@@ -65,96 +81,106 @@ int get_input(WINDOW *input, char **buffer, int *stop_flag)
  
   nb_ch = 0;
 
+  pthread_mutex_lock(&ncurse_lock);
   wmove(input, y, x);
   wrefresh(input);
-  
-  while((ch = wgetch(input)) != '\n'){
-    /* if(DEBUG){
-      mvwprintw(input, 0, 0, "_____________");
-      mvwprintw(input, 0, 0, "nb_char = %d", nb_ch);
-      wmove(input, y, x);
-      }*/
-    if(*stop_flag){
-      return -1;
-    }
+  pthread_mutex_unlock(&ncurse_lock);
 
-    if(ch == KEY_LEFT){
-      if(x - 1 < 0){
-	if(y > 1){
-	  x = width - 1;
-	  y--;
-	}
-      } else {
-	x--;
-      }
-      wmove(input, y, x);    
-    }
-    else if(ch == KEY_RIGHT){
-      if((x + ((width - 1)*(y-1))) < nb_ch){
-	if((x+1) >= width){
-	  y++;
-	  x = 0;
-	} else {
-	  x++;
-	}	
+  while((ch = wgetch(input)) != '\n'){
+    if(ch != ERR){
+
+      pthread_mutex_lock(&ncurse_lock);
+      
+      if(DEBUG){
+	mvwprintw(input, 0, 0, "_____________");
+	mvwprintw(input, 0, 0, "nb_char = %d", nb_ch);
 	wmove(input, y, x);
       }
-    }
-    else if(ch == KEY_UP){
-     
-      if(y > 1){
-	/*	if(y == 2){
-	  wscrl(input, -1);
-	  }*/
-	y--;
+      if(*stop_flag){
+	return -1;
       }
-      
-      wmove(input, y, x);
-    }
-    else if(ch == KEY_DOWN){
-      if((nb_ch / (width-1)) >= y ){
-	y++;
-      }
-      
-      if(x > nb_ch % (width)){
-	x = nb_ch % (width);
-      } 
-      
-      wmove(input, y, x);
-    }
-    else if(ch == KEY_BACKSPACE){
-      if(x > 0 || y > 1){	
-	if(x == 0){
-	  y--;
-	  x = width - 1;
+
+      if(ch == KEY_LEFT){
+	if(x - 1 < 0){
+	  if(y > 1){
+	    x = width - 1;
+	    y--;
+	  }
 	} else {
 	  x--;
 	}
-	rm_ch_from_buffer(input, x, y, width, nb_ch, *buffer);
-	nb_ch--;
-	// Move the cursor a step back because rm_ch_from_buffer moved it foward.
-	wmove(input, y, x);
+	wmove(input, y, x);    
       }
-    }
-    // Only add the regulars char to the buffer.
-    else if(ch > 31 && ch < 127){
-      if(nb_ch < BUF_SIZ - 1){
-	
-	add_ch_to_buffer(input, ch, x, y, width, nb_ch, *buffer);
-	nb_ch++;
-	wmove(input, y, x);
-	if(x + 1 >= width){
-	  x = 0;
-	  y ++;
-	} else {
-	  x++;
+      else if(ch == KEY_RIGHT){
+	if((x + ((width - 1)*(y-1))) < nb_ch){
+	  if((x+1) >= width){
+	    y++;
+	    x = 0;
+	  } else {
+	    x++;
+	  }	
+	  wmove(input, y, x);
 	}
-	wmove(input, y, x);	
       }
+      else if(ch == KEY_UP){
+     
+	if(y > 1){
+	  /*	if(y == 2){
+		wscrl(input, -1);
+		}*/
+	  y--;
+	}
+      
+	wmove(input, y, x);
+      }
+      else if(ch == KEY_DOWN){
+	if((nb_ch / (width-1)) >= y ){
+	  y++;
+	}
+      
+	if(x > nb_ch % (width)){
+	  x = nb_ch % (width);
+	} 
+      
+	wmove(input, y, x);
+      }
+      else if(ch == KEY_BACKSPACE){
+	if(x > 0 || y > 1){	
+	  if(x == 0){
+	    y--;
+	    x = width - 1;
+	  } else {
+	    x--;
+	  }
+	  rm_ch_from_buffer(input, x, y, width, nb_ch, *buffer);
+	  nb_ch--;
+	  // Move the cursor a step back because rm_ch_from_buffer moved it foward.
+	  wmove(input, y, x);
+	}
+      }
+      else if(ch == KEY_RESIZE){
+	handle_resize(input, chat);
+      }
+      // Only add the regulars char to the buffer.
+      else if(ch > 31 && ch < 127){
+	if(nb_ch < BUF_SIZ - 1){
+	
+	  add_ch_to_buffer(input, ch, x, y, width, nb_ch, *buffer);
+	  nb_ch++;
+	  wmove(input, y, x);
+	  if(x + 1 >= width){
+	    x = 0;
+	    y ++;
+	  } else {
+	    x++;
+	  }
+	  wmove(input, y, x);	
+	}
+      }
+      wrefresh(input);
+      pthread_mutex_unlock(&ncurse_lock);
     }
-    wrefresh(input);
   }
-  
   return 0;
 }
 
@@ -197,6 +223,7 @@ void * handle_input(void * arg)
   scrollok(input_arg->input, TRUE);
 
   while(1){
+    pthread_mutex_lock(&ncurse_lock);
     // Clear screen.
     wclear(input_arg->input);
     draw_line(input_arg->input);
@@ -205,13 +232,15 @@ void * handle_input(void * arg)
     mvwprintw(input_arg->input, 0, (input_arg->input->_maxx/2) - (strlen(input_title)/2), input_title);
     // Display the updated screen.
     wrefresh(input_arg->input);
+    pthread_mutex_unlock(&ncurse_lock);
 
     // Get the user input.
     //mvwgetnstr(input_arg->input, 1, 0, msg, BUF_SIZ);
-    if(get_input(input_arg->input, &msg, input_arg->stop_flag) < 0){
+    if(get_input(input_arg->input, input_arg->chat, &msg, input_arg->stop_flag) < 0){
       // The server has closed the socket.
       break;
     }
+    
 
     if(!is_empty(msg)){
       //Send the user message.
@@ -235,19 +264,24 @@ void * handle_listen(void * arg)
 
   // Enable the scrolling.
   scrollok(listen_arg->chat, TRUE);
-  draw_line(listen_arg->chat);
-  // Center the window title.
-  mvwprintw(listen_arg->chat, 0, (listen_arg->chat->_maxx/2) - (strlen(chat_title)/2), chat_title);
-  wrefresh(listen_arg->chat);
+ 
   while(1){
+    pthread_mutex_lock(&ncurse_lock);
+    draw_line(listen_arg->chat);
+    // Center the window title.
+    mvwprintw(listen_arg->chat, 0, (listen_arg->chat->_maxx/2) - (strlen(chat_title)/2), chat_title);
+    wrefresh(listen_arg->chat);
     // Receive a reply from the server.
+    pthread_mutex_unlock(&ncurse_lock);
     if(read(listen_arg->socket, buffer, BUF_SIZ) <= 0){
       // Connection closed.
       *listen_arg->stop_flag = 1;
       pthread_exit(0);
     }
+    pthread_mutex_lock(&ncurse_lock);
     // Print the text received to the chat windows
     add_to_chat(listen_arg, buffer);
+    pthread_mutex_unlock(&ncurse_lock);
   }
 }
 
@@ -270,7 +304,7 @@ int main(int argc, char * argv[])
   char ip[100];
   
   struct sockaddr_in server;
-  
+
   if(argc < 4){
     printf("Bad usage: %s [host_address] [port_number] [pseudo]\n", argv[0]);
     return -1;
