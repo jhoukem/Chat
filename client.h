@@ -17,6 +17,8 @@ void * handle_input(void * arg);
 void * handle_listen(void *arg);
 int send_pseudo(int socket_client, char * pseudo);
 void draw_borders(WINDOW *screen);
+void display_header(WINDOW *win, char *label);
 void add_to_chat(arg_c thread_arg, char * text);
+void handle_resize(WINDOW *input, WINDOW *chat);
 int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag);
 #endif

@@ -7,6 +7,7 @@ CC = gcc
 CFLAGS = -W -Wall
 CFLAGS_T = -pthread
 LDFLAGS = -lncurses
+#SSLFLAGS=  -I/usr/include/openssl -L/usr/lib/x86_64-linux-gnu -lcrypto -lssl3 -lssl
 # Le nom de l’exécutable à fabriquer
 EXE1=server
 EXE2=client

@@ -12,10 +12,13 @@
 #include "util.h"
 #include "sig.h"
 
+
 #define BUF_SIZ 1024
 #define PSEUDO_MAX_SIZE 10
 #define DEBUG 0
 #define INPUT_HEIGHT 4
+#define INPUT_HEADER "Enter a message"
+#define CHAT_HEADER "Chat"
 
 pthread_mutex_t ncurse_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -25,14 +28,18 @@ void handle_resize(WINDOW *input, WINDOW *chat)
   getmaxyx(stdscr, new_y, new_x);
   wresize(chat, new_y - INPUT_HEIGHT, new_x);
   wresize(input, INPUT_HEIGHT, new_x);
-  mvwin(chat, INPUT_HEIGHT, 0);
-  wclear(chat);
-  wclear(input);
+  mvwin(input, new_y - INPUT_HEIGHT, 0);
+  mvwin(chat, 0, 0);
+  display_header(chat, CHAT_HEADER);
+  display_header(input, INPUT_HEADER);
   wrefresh(chat);
   wrefresh(input);
- 
 }
 
+int min(int x, int y)
+{
+  return x < y ? x : y;
+}
 void rm_ch_from_buffer(WINDOW *input, int x, int y, int width, int nb_ch, char * buffer)
 {
   int i, pos;
@@ -40,22 +47,21 @@ void rm_ch_from_buffer(WINDOW *input, int x, int y, int width, int nb_ch, char *
   // We shift to the left all the end of the buffer
   for(i = pos; i < nb_ch - 1; i++){
     buffer[i] = buffer[i + 1];
-    mvwprintw(input, y, x + (i-pos), (char*)&buffer[i]);
+    mvwprintw(input, min(y, INPUT_HEIGHT - 1), x + (i-pos), (char*)&buffer[i]);
   }
   buffer[i] = ' ';
-  mvwprintw(input, y, x + (i-pos), (char*)&buffer[i]);
+  mvwprintw(input, min(y, INPUT_HEIGHT - 1), x + (i-pos), (char*)&buffer[i]);
 }
 
 void add_ch_to_buffer(WINDOW *input, int ch, int x, int y, int width, int nb_ch, char * buffer)
 {
   int i, pos;
-  pos = x + (width -1) * (y - 1);
+  pos = x + (width - 1) * (y - 1);
   
   // Add a char at the end of the buffer.
   if(pos == nb_ch){
     buffer[pos] = ch;
-    mvwprintw(input, y, x, (char *)&ch);
-
+    mvwprintw(input, min(y, INPUT_HEIGHT - 1), x, (char *)&ch);
   }  
   // Shift all the buffer to the right and
   // insert a char at the current position.  
@@ -63,10 +69,10 @@ void add_ch_to_buffer(WINDOW *input, int ch, int x, int y, int width, int nb_ch,
 
     for(i = nb_ch; i > pos; i--){
       buffer[i] = buffer[i - 1];
-      mvwprintw(input, y, i%width , (char*)&buffer[i]);
+      mvwprintw(input, min(y, INPUT_HEIGHT - 1), i%width , (char*)&buffer[i]);
     }
     buffer[i] = ch;
-    mvwprintw(input, y, x, (char*)&buffer[i]);
+    mvwprintw(input, min(y, INPUT_HEIGHT - 1), x, (char*)&buffer[i]);
   }
 }
 
@@ -76,10 +82,11 @@ int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag)
   ch = 0;
   x = 0;
   y = 1;
-  getmaxyx(input, nb_ch, width);
+  nb_ch = 0;  
+  width = input->_maxx + 1;
+
+  // Clear the buffer.
   *buffer = memset(*buffer, 0, BUF_SIZ);
- 
-  nb_ch = 0;
 
   pthread_mutex_lock(&ncurse_lock);
   wmove(input, y, x);
@@ -87,19 +94,14 @@ int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag)
   pthread_mutex_unlock(&ncurse_lock);
 
   while((ch = wgetch(input)) != '\n'){
+    // If the client lost the connexion to the server.
+    if(*stop_flag){
+      return -1;
+    }
     if(ch != ERR){
 
       pthread_mutex_lock(&ncurse_lock);
       
-      if(DEBUG){
-	mvwprintw(input, 0, 0, "_____________");
-	mvwprintw(input, 0, 0, "nb_char = %d", nb_ch);
-	wmove(input, y, x);
-      }
-      if(*stop_flag){
-	return -1;
-      }
-
       if(ch == KEY_LEFT){
 	if(x - 1 < 0){
 	  if(y > 1){
@@ -109,7 +111,6 @@ int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag)
 	} else {
 	  x--;
 	}
-	wmove(input, y, x);    
       }
       else if(ch == KEY_RIGHT){
 	if((x + ((width - 1)*(y-1))) < nb_ch){
@@ -119,7 +120,6 @@ int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag)
 	  } else {
 	    x++;
 	  }	
-	  wmove(input, y, x);
 	}
       }
       else if(ch == KEY_UP){
@@ -130,19 +130,14 @@ int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag)
 		}*/
 	  y--;
 	}
-      
-	wmove(input, y, x);
       }
       else if(ch == KEY_DOWN){
 	if((nb_ch / (width-1)) >= y ){
 	  y++;
-	}
-      
+	}  
 	if(x > nb_ch % (width)){
-	  x = nb_ch % (width);
+	  x = nb_ch % (width - 1);
 	} 
-      
-	wmove(input, y, x);
       }
       else if(ch == KEY_BACKSPACE){
 	if(x > 0 || y > 1){	
@@ -154,12 +149,7 @@ int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag)
 	  }
 	  rm_ch_from_buffer(input, x, y, width, nb_ch, *buffer);
 	  nb_ch--;
-	  // Move the cursor a step back because rm_ch_from_buffer moved it foward.
-	  wmove(input, y, x);
 	}
-      }
-      else if(ch == KEY_RESIZE){
-	handle_resize(input, chat);
       }
       // Only add the regulars char to the buffer.
       else if(ch > 31 && ch < 127){
@@ -167,16 +157,29 @@ int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag)
 	
 	  add_ch_to_buffer(input, ch, x, y, width, nb_ch, *buffer);
 	  nb_ch++;
-	  wmove(input, y, x);
-	  if(x + 1 >= width){
+	 
+	  if(x + 1 >= width - 1){
 	    x = 0;
 	    y ++;
+	    if(y >= INPUT_HEIGHT){
+	      scroll(input);
+	      display_header(input, INPUT_HEADER);
+	    }
 	  } else {
 	    x++;
 	  }
-	  wmove(input, y, x);	
 	}
       }
+      else if(ch == KEY_RESIZE){
+	handle_resize(input, chat);
+	width = input->_maxx + 1;
+      }
+      if(DEBUG){
+	mvwprintw(input, 0, 0, "______________");
+	mvwprintw(input, 0, 0, "ch=%d, w=%d", nb_ch, width);
+      }
+      
+      wmove(input, min(y, INPUT_HEIGHT -1), x);
       wrefresh(input);
       pthread_mutex_unlock(&ncurse_lock);
     }
@@ -212,7 +215,6 @@ void * handle_input(void * arg)
 {
   arg_c input_arg = (arg_c) arg; 
   char * msg = malloc(sizeof(char) * BUF_SIZ);
-  char input_title[] = "Enter a message";
   
   cbreak();
   noecho();
@@ -224,24 +226,15 @@ void * handle_input(void * arg)
 
   while(1){
     pthread_mutex_lock(&ncurse_lock);
-    // Clear screen.
     wclear(input_arg->input);
-    draw_line(input_arg->input);
-       
-    // Center the window title.  
-    mvwprintw(input_arg->input, 0, (input_arg->input->_maxx/2) - (strlen(input_title)/2), input_title);
-    // Display the updated screen.
-    wrefresh(input_arg->input);
+    display_header(input_arg->input, INPUT_HEADER);
     pthread_mutex_unlock(&ncurse_lock);
-
+    
     // Get the user input.
-    //mvwgetnstr(input_arg->input, 1, 0, msg, BUF_SIZ);
     if(get_input(input_arg->input, input_arg->chat, &msg, input_arg->stop_flag) < 0){
       // The server has closed the socket.
       break;
     }
-    
-
     if(!is_empty(msg)){
       //Send the user message.
       if(write(input_arg->socket, msg , strlen(msg) + 1) < 0){
@@ -256,10 +249,17 @@ void * handle_input(void * arg)
 }
 
 
+void display_header(WINDOW *win, char *label)
+{
+  draw_line(win);
+  // Center the window title.
+  mvwprintw(win, 0, (win->_maxx/2) - (strlen(label)/2), label);
+  wrefresh(win);
+}
+
 void * handle_listen(void * arg)
 {
   char buffer[BUF_SIZ + PSEUDO_MAX_SIZE];
-  char chat_title[] = "Chat";
   arg_c listen_arg = (arg_c) arg;
 
   // Enable the scrolling.
@@ -267,19 +267,17 @@ void * handle_listen(void * arg)
  
   while(1){
     pthread_mutex_lock(&ncurse_lock);
-    draw_line(listen_arg->chat);
-    // Center the window title.
-    mvwprintw(listen_arg->chat, 0, (listen_arg->chat->_maxx/2) - (strlen(chat_title)/2), chat_title);
-    wrefresh(listen_arg->chat);
-    // Receive a reply from the server.
+    display_header(listen_arg->chat, CHAT_HEADER);
     pthread_mutex_unlock(&ncurse_lock);
+    
+    // Receive a reply from the server.
     if(read(listen_arg->socket, buffer, BUF_SIZ) <= 0){
       // Connection closed.
       *listen_arg->stop_flag = 1;
       pthread_exit(0);
     }
-    pthread_mutex_lock(&ncurse_lock);
-    // Print the text received to the chat windows
+    // Print the text received to the chat window
+    pthread_mutex_lock(&ncurse_lock);   
     add_to_chat(listen_arg, buffer);
     pthread_mutex_unlock(&ncurse_lock);
   }
@@ -297,7 +295,7 @@ int send_pseudo(int socket_client, char * pseudo)
 int main(int argc, char * argv[])
 {
 
-  int socket_client, port, input_size, parent_x, parent_y, stop, line;
+  int socket_client, port, parent_x, parent_y, stop, line;
   char *pseudo;
   pthread_t thread_input, thread_listen;
   arg_c thread_arg;
@@ -342,11 +340,10 @@ int main(int argc, char * argv[])
   getmaxyx(stdscr, parent_y, parent_x);
   line = 1;
   stop = 0;
-  input_size = 4;
   
   // Set up the windows.
-  WINDOW *chat = newwin(parent_y - input_size, parent_x, 0, 0);
-  WINDOW *input = newwin(input_size, parent_x, parent_y - input_size, 0);
+  WINDOW *chat = newwin(parent_y - INPUT_HEIGHT, parent_x, 0, 0);
+  WINDOW *input = newwin(INPUT_HEIGHT, parent_x, parent_y - INPUT_HEIGHT, 0);
   
   // Set the thread struct parameters.
   thread_arg = malloc(sizeof(struct thread_arg_c));
