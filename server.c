@@ -5,13 +5,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/select.h>
 #include "server.h"
 #include "socket.h"
 #include "util.h"
 
+// The password to connect to the server.
+#define PASSWD "xxx"
 #define CLIENT_MAX 10
 #define BUF_SIZ 1024
 #define PSEUDO_MAX_SIZE 10
+#define MAX_KEY_SIZE 20
+#define REC_ERR 1
+#define ID_ERR 2
+#define PASS_ERR 3
+#define W_PASSWD 4
+#define TIME_OUT 5
 
 void send_to_clients_except(arg_s thread_arg, char * msg)
 {
@@ -54,12 +63,20 @@ void free_thread_rsc(arg_s thread_arg)
 void * handle_client(void * arg)
 {
   arg_s thread_arg = (arg_s) arg;
-  int read_size;
+  int read_size, ret;
   char buffer[BUF_SIZ];
   char client_msg[BUF_SIZ+PSEUDO_MAX_SIZE];
 
-  if(get_client_pseudo(thread_arg->socket_clients[thread_arg->idx], thread_arg->pseudo) != 0){
-    printf("Error no pseudo received from the client %d\n", thread_arg->idx);
+  if((ret = identify_client(thread_arg->socket_clients[thread_arg->idx], thread_arg->pseudo)) != 0){
+    switch(ret){
+    case TIME_OUT: printf("Error: Client time out.\n"); break;
+    case REC_ERR: printf("Error: Can't read from the client.\n"); break;
+    case ID_ERR: printf("Error: No ID received from the client.\n"); break;
+    case PASS_ERR: printf("Error: No password received from the client.\n"); break;
+    case W_PASSWD: printf("Error: Wrong password from the client.\n"); break;
+    }
+    printf("Disconnecting the client %d. Thread %d stop.\n", thread_arg->idx + 1, thread_arg->idx);
+    free_thread_rsc(thread_arg);
     pthread_exit(NULL);
   }  
 
@@ -104,11 +121,43 @@ int get_client_idx(int * tab)
   return -1;
 }
 
-int get_client_pseudo(int socket_client, char * buffer)
+int identify_client(int socket_client, char *pseudo)
 {
+  int ret = 0;  
+  char *key, *pseudo_tmp;
+  char buffer[PSEUDO_MAX_SIZE + MAX_KEY_SIZE + 1];
 
-  if(recv(socket_client , buffer , PSEUDO_MAX_SIZE, 0) <= 0){
-    return -1;
+  fd_set readfs;
+  struct timeval timeout;
+  // The server wait the client credential for 20 seconds.
+  timeout.tv_sec = 20;
+  timeout.tv_usec = 0;
+  
+  FD_ZERO(&readfs);
+  FD_SET(socket_client, &readfs);
+
+  if((ret = select(socket_client + 1, &readfs, NULL, NULL, &timeout)) <= 0){
+    return TIME_OUT;
+  } else if(FD_ISSET(socket_client, &readfs)) {
+    
+    if((ret = recv(socket_client , buffer , PSEUDO_MAX_SIZE + MAX_KEY_SIZE, 0)) <= 0){
+      return REC_ERR;
+    }
+
+    pseudo_tmp = strtok(buffer, ":");
+    if(pseudo_tmp == NULL){
+      return ID_ERR;
+    }
+    strncpy(pseudo,  pseudo_tmp, PSEUDO_MAX_SIZE);
+    key = strtok(NULL, ":");
+    
+    if(key == NULL){
+      return PASS_ERR;
+    }
+    // If the password is wrong.
+    if(strcmp(key, PASSWD) != 0){
+      return W_PASSWD;
+    }
   }
   return 0;
 }

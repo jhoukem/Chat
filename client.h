@@ -15,7 +15,7 @@ typedef struct thread_arg_c * arg_c;
 
 void * handle_input(void * arg);
 void * handle_listen(void *arg);
-int send_pseudo(int socket_client, char * pseudo);
+int identify_to_server(int socket_client);
 void draw_borders(WINDOW *screen);
 void display_header(WINDOW *win, char *label);
 void add_to_chat(arg_c thread_arg, char * text);

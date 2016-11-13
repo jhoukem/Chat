@@ -15,6 +15,7 @@
 
 #define BUF_SIZ 1024
 #define PSEUDO_MAX_SIZE 10
+#define MAX_KEY_SIZE 20
 #define DEBUG 0
 #define INPUT_HEIGHT 4
 #define INPUT_HEADER "Enter a message"
@@ -283,10 +284,31 @@ void * handle_listen(void * arg)
   }
 }
 
-
-int send_pseudo(int socket_client, char * pseudo)
+int identify_to_server(int socket_client)
 {
-  if(send(socket_client, pseudo, PSEUDO_MAX_SIZE, 0) < 0){
+  size_t ln;
+  char pseudo[PSEUDO_MAX_SIZE];
+  char key[MAX_KEY_SIZE];
+  char buffer[PSEUDO_MAX_SIZE + MAX_KEY_SIZE + 1];
+  // do{
+    printf("Enter your username:");
+    fgets(pseudo, PSEUDO_MAX_SIZE, stdin);
+    // } while(is_empty(pseudo));
+  
+  printf("Enter the server password:");
+  //echo_off();
+  fgets(key, MAX_KEY_SIZE, stdin);
+  //echo_on();
+  // Remove the newline char.
+  ln = strlen(pseudo)-1;
+  if (pseudo[ln] == '\n')
+    pseudo[ln] = '\0';
+  ln = strlen(key)-1;
+  if (key[ln] == '\n')
+    key[ln] = '\0';
+  // Concatene the two string together.
+  snprintf(buffer, PSEUDO_MAX_SIZE + MAX_KEY_SIZE + 1, "%s:%s", pseudo, key );
+  if(send(socket_client, buffer, strlen(buffer), 0) < 0){
     return -1;
   }
   return 0;
@@ -296,15 +318,14 @@ int main(int argc, char * argv[])
 {
 
   int socket_client, port, parent_x, parent_y, stop, line;
-  char *pseudo;
   pthread_t thread_input, thread_listen;
   arg_c thread_arg;
   char ip[100];
   
   struct sockaddr_in server;
 
-  if(argc < 4){
-    printf("Bad usage: %s [host_address] [port_number] [pseudo]\n", argv[0]);
+  if(argc < 3){
+    printf("Bad usage: %s [host_address] [port_number]\n", argv[0]);
     return -1;
   }
 
@@ -312,7 +333,6 @@ int main(int argc, char * argv[])
   hostname_to_ip(argv[1], ip);
 
   port = atoi(argv[2]);
-  pseudo = argv[3];
   server.sin_addr.s_addr = inet_addr(ip);
   server.sin_family = AF_INET;
   server.sin_port = htons(port);
@@ -326,9 +346,9 @@ int main(int argc, char * argv[])
     return 1;
   }
 
-  // Send the pseudo to the server.
-  if(send_pseudo(socket_client, pseudo) < 0){
-    printf("Can't send the pseudo to the server\n");
+  // Send the credential to the server.
+  if(identify_to_server(socket_client) < 0){
+    printf("Credential refused by the server\n");
     return -1;
   }
 
@@ -351,7 +371,7 @@ int main(int argc, char * argv[])
   thread_arg->chat = chat;
   thread_arg->socket = socket_client;
   thread_arg->line = &line;
-  thread_arg->pseudo = pseudo;
+  //thread_arg->pseudo = pseudo;
   thread_arg->stop_flag = &stop;
   
   // Start a thread that will handle the client input.

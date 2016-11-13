@@ -16,7 +16,7 @@ void * handle_client(void * arg);
 int get_client_idx(int * tab);
 void send_to_clients_except(arg_s thread_arg, char * msg);
 void free_thread_rsc(arg_s thread_arg);
-int get_client_pseudo(int socket_client, char * buffer);
+int identify_client(int socket_client, char *pseudo);
 int accept_client(int socket_server, int * socket_clients, int * counter_client, pthread_mutex_t * counter_lock);
 
 #endif
