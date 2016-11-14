@@ -6,9 +6,15 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/select.h>
+#include<arpa/inet.h>
+#include <netdb.h>
+
 #include "server.h"
 #include "socket.h"
 #include "util.h"
+
+
+
 
 // The password to connect to the server.
 #define PASSWD "xxx"
@@ -165,14 +171,17 @@ int identify_client(int socket_client, char *pseudo)
 int accept_client(int socket_server, int * socket_clients, int * counter_client, pthread_mutex_t * counter_lock)
 {
   int idx;
+  socklen_t client_len;
   int socket_acc;
   pthread_t thread_client;
   arg_s thread_arg = NULL;
-  
+  struct sockaddr_in client_address;
+  char clntName[INET6_ADDRSTRLEN];
+  client_len = sizeof(client_address);
   printf("Server waiting for incoming connection...\n");
   
   // Accept the connection.
-  socket_acc = accept(socket_server, NULL , NULL);
+  socket_acc = accept(socket_server, (struct sockaddr *)&client_address, &client_len);
   if(socket_acc == -1){
     perror ("accept()");
     return -1;
@@ -212,7 +221,10 @@ int accept_client(int socket_server, int * socket_clients, int * counter_client,
     perror("pthread_detach");
     return -1;
   }
-  printf("Client #%d is connected on slot %d\n", *counter_client, idx);
+
+  inet_ntop(AF_INET, &client_address.sin_addr.s_addr, clntName, sizeof(clntName));
+
+  printf("Client #%d is connected on slot %d with the ip address: %s on the port %d\n", *counter_client, idx, clntName, ntohs(client_address.sin_port));
   return 0;
 }      
 
