@@ -14,12 +14,13 @@
 
 
 #define BUF_SIZ 1024
-#define PSEUDO_MAX_SIZE 10
+#define PSEUDO_MAX_SIZE 20
 #define MAX_KEY_SIZE 20
 #define DEBUG 0
 #define INPUT_HEIGHT 4
 #define INPUT_HEADER "Enter a message"
 #define CHAT_HEADER "Chat"
+#define CONNECTION_SUCCESS "Connection successful"
 
 pthread_mutex_t ncurse_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -286,32 +287,35 @@ void * handle_listen(void * arg)
 
 int identify_to_server(int socket_client)
 {
-  size_t ln;
-  char pseudo[PSEUDO_MAX_SIZE];
-  char key[MAX_KEY_SIZE];
-  char buffer[PSEUDO_MAX_SIZE + MAX_KEY_SIZE + 1];
-  // do{
-    printf("Enter your username:");
-    fgets(pseudo, PSEUDO_MAX_SIZE, stdin);
-    // } while(is_empty(pseudo));
+  char pseudo[PSEUDO_MAX_SIZE] = {0};
+  char key[MAX_KEY_SIZE] = {0};
+  char buffer[PSEUDO_MAX_SIZE + MAX_KEY_SIZE + 1] = {0};
+  char answer[BUF_SIZ] = {0};
+  do{
+    printf("Enter your username (%d char max): ", PSEUDO_MAX_SIZE);
+    get_line(pseudo, PSEUDO_MAX_SIZE);
+  } while(is_empty(pseudo));
   
   printf("Enter the server password:");
-  //echo_off();
-  fgets(key, MAX_KEY_SIZE, stdin);
-  //echo_on();
-  // Remove the newline char.
-  ln = strlen(pseudo)-1;
-  if (pseudo[ln] == '\n')
-    pseudo[ln] = '\0';
-  ln = strlen(key)-1;
-  if (key[ln] == '\n')
-    key[ln] = '\0';
+  echo_off();
+  get_line(key, MAX_KEY_SIZE);
+  echo_on();
+  printf("\n");
+  
   // Concatene the two string together.
   snprintf(buffer, PSEUDO_MAX_SIZE + MAX_KEY_SIZE + 1, "%s:%s", pseudo, key );
-  if(send(socket_client, buffer, strlen(buffer), 0) < 0){
+  if(write(socket_client, buffer, strlen(buffer) + 1) < 0){
     return -1;
   }
-  return 0;
+  if(read(socket_client, answer, BUF_SIZ) <= 0){
+    printf("Cannot read from the server.\n");
+    return -1;
+  }
+  printf("%s\n", answer);
+  if(strcmp(answer, CONNECTION_SUCCESS) == 0){
+    return 0;
+  }
+  return -1;
 }
 
 int main(int argc, char * argv[])
@@ -347,8 +351,7 @@ int main(int argc, char * argv[])
   }
 
   // Send the credential to the server.
-  if(identify_to_server(socket_client) < 0){
-    printf("Credential refused by the server\n");
+  if(identify_to_server(socket_client) < 0){  
     return -1;
   }
 

@@ -1,22 +1,30 @@
 #ifndef SERV
 #define SERV
 
+struct CLIENT
+{
+  char *pseudo;
+  int socket;
+};
+typedef struct CLIENT CLIENT;
+
 struct thread_arg_s
 {   
-  int idx; // Client ID
-  int *counter_client; // Clients count
-  int *socket_clients; // Other clients ID
-  char *pseudo; // Client human readable id
-  pthread_mutex_t * counter_lock; // Mutex to modify the counter
+  int current_client_id; // The id of the client to handle.
+  CLIENT *clients; // Others client.
+  int *counter_client; // Client counter.
+  pthread_mutex_t *counter_lock; // Mutex to modify the counter.
 
 };
 typedef struct thread_arg_s * arg_s;
 
-void * handle_client(void * arg);
-int get_client_idx(int * tab);
-void send_to_clients_except(arg_s thread_arg, char * msg);
-void free_thread_rsc(arg_s thread_arg);
-int identify_client(int socket_client, char *pseudo);
-int accept_client(int socket_server, int * socket_clients, int * counter_client, pthread_mutex_t * counter_lock);
+void * handle_client(void *arg);
+int get_client_id(CLIENT *clients);
+void send_to_clients_except(CLIENT *clients, CLIENT *client_exception, char * msg);
+void send_to_clients(CLIENT *clients, char *msg);
+void free_thread_rsc(arg_s thread_arg, int fflag);
+int is_pseudo_free(char *pseudo, CLIENT *clients, int id_client);
+int identify_client(CLIENT *client, int id_client);
+int accept_client(int socket_server, CLIENT *clients, int *counter_client, pthread_mutex_t *counter_lock);
 
 #endif
