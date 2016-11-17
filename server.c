@@ -26,48 +26,66 @@
 #define DEBUG 0
 #define CONNECTION_SUCCESS "Connection successful"
 
+// Mutex to modify the shared ressources between threads.
+pthread_mutex_t shared_rsc_lock = PTHREAD_MUTEX_INITIALIZER; 
+
+int client_connected(CLIENT client)
+{
+  return client.socket != 0 && client.pseudo != NULL;
+}
+
 void send_to_clients_except(CLIENT *clients, CLIENT *client_exception, char * msg)
 {
   int i;
+  // Lock the shared ressources.
+  pthread_mutex_lock(&shared_rsc_lock);
   // Send the message to all the clients.
   for(i = 0; i < CLIENT_MAX; i++){
     // Don't send the message back to the sender or to a null socket.
-    if((clients + i)->socket != 0 && (clients+i) != client_exception){ 
-      write((clients + i)->socket , msg , strlen(msg) + 1);
+    if(client_connected(clients[i]) && &clients[i] != client_exception){ 
+      write(clients[i].socket , msg , strlen(msg) + 1);
     }
   }
+  pthread_mutex_unlock(&shared_rsc_lock);
 }
 
 void send_to_clients(CLIENT *clients, char * msg)
 {
   int i;
+  // Lock the shared ressources.
+  pthread_mutex_lock(&shared_rsc_lock);
   // Send the message to all the clients.
   for(i = 0; i < CLIENT_MAX; i++){
-    // Don't send the message back to a null client.
-    if((clients + i)->socket != 0){ 
-      write((clients + i)->socket , msg , strlen(msg) + 1);
+    // Don't send the message to a null socket.
+    if(client_connected(clients[i])){ 
+      write(clients[i].socket , msg , strlen(msg) + 1);
     }
   }
+  pthread_mutex_unlock(&shared_rsc_lock);
 }
 
 void free_thread_rsc(arg_s thread_arg, int fflag)
 {
   CLIENT *client;
-  client = thread_arg->clients+thread_arg->current_client_id;
-  
+  client = thread_arg->clients+thread_arg->current_client_id;  
 
-  // Close the client socket
+  // Lock the shared ressources.
+  pthread_mutex_lock(&shared_rsc_lock);
+
+  // Close the client socket, and set it to 0.
   close(client->socket);
-  // Free the client pseudo, and set the client socket to 0.
-  if(fflag){
-    free(client->pseudo);
-  }
   client->socket = 0;
 
+  // Free the client pseudo and set it to NULL.
+  if(fflag){
+    client->pseudo = NULL;
+    free(client->pseudo);
+  }
+
   // Update the number of client.
-  pthread_mutex_lock(thread_arg->counter_lock);
   (*thread_arg->counter_client)--;
-  pthread_mutex_unlock(thread_arg->counter_lock);
+
+  pthread_mutex_unlock(&shared_rsc_lock);
 
   // flush all the stdout for the log file.
   fflush(stdout);
@@ -80,8 +98,8 @@ void * handle_client(void * arg)
   char buffer[BUF_SIZ];
   char client_msg[BUF_SIZ+PSEUDO_MAX_SIZE];
   CLIENT *client;
-  client = thread_arg->clients+thread_arg->current_client_id;
-
+  client = &thread_arg->clients[thread_arg->current_client_id];
+ 
   if((ret = identify_client(thread_arg->clients, thread_arg->current_client_id)) != 0){
     switch(ret){
     case TIME_OUT:
@@ -106,6 +124,7 @@ void * handle_client(void * arg)
     free_thread_rsc(thread_arg, 0);
     pthread_exit(NULL);
   } 
+
   // Send the status to the client.
   snprintf(buffer, BUF_SIZ, CONNECTION_SUCCESS);
   write(client->socket ,buffer , strlen(buffer) + 1);
@@ -142,28 +161,42 @@ void * handle_client(void * arg)
 
 int get_client_id(CLIENT *clients)
 {
-  int i;
+  int i, id;
+  id = -1;
+  // Lock the shared ressources.
+  pthread_mutex_lock(&shared_rsc_lock);
+
   for(i = 0; i < CLIENT_MAX; i++){
     // if it is a free space.
-    if((clients + i)->socket == 0){ 
-      return i;
+    if(clients[i].socket == 0){ 
+      id = i;
+      break;
     }
   }
-  return -1;
+  pthread_mutex_unlock(&shared_rsc_lock);
+  return id;
 }
 
 int is_pseudo_free(char *pseudo, CLIENT *clients, int client_id)
 {
-  int i;
+  int i, status;
+  status = 1;
+  // Lock the shared ressources.
+  pthread_mutex_lock(&shared_rsc_lock);
+ 
   for(i = 0; i < CLIENT_MAX; i++){
     // If the pseudo is already taken.
     if(i != client_id){
-      if((clients+i)->socket != 0 && (strcmp((clients+i)->pseudo, pseudo) == 0)){ 
-	return 0;
+     
+      if(client_connected(clients[i]) && (strcmp(clients[i].pseudo, pseudo) == 0)){
+	status = 0;
+	break;
       }
     }
   }
-  return 1;
+
+  pthread_mutex_unlock(&shared_rsc_lock);
+  return status;
 }
 
 int identify_client(CLIENT *clients, int id_client)
@@ -205,6 +238,7 @@ int identify_client(CLIENT *clients, int id_client)
     if(!is_pseudo_free(pseudo_tmp, clients, id_client)){
       return ID_NOT_FREE_ERR;
     }
+   
     key = strtok(NULL, ":");
     if(DEBUG){
       printf("Received passwd: %s\n", key);
@@ -219,14 +253,14 @@ int identify_client(CLIENT *clients, int id_client)
       return PASS_ERR;
     }
   }
-    
-  // If everything is ok
-  client->pseudo = malloc(sizeof(char) * strlen(pseudo_tmp));
-  strncpy(client->pseudo,  pseudo_tmp, strlen(pseudo_tmp));
+  
+  // If everything is ok.  (+1 stand here for the null byte)
+  client->pseudo = malloc(sizeof(char) * (strlen(pseudo_tmp) + 1));
+  strncpy(client->pseudo,  pseudo_tmp, strlen(pseudo_tmp) + 1);
   return 0;
 }
 
-int accept_client(int socket_server, CLIENT *clients, int * counter_client, pthread_mutex_t * counter_lock)
+int accept_client(int socket_server, CLIENT *clients, int * counter_client)
 {
   int id;
   socklen_t client_len;
@@ -253,20 +287,19 @@ int accept_client(int socket_server, CLIENT *clients, int * counter_client, pthr
   }
 
   // Update the client counter.
-  pthread_mutex_lock(counter_lock);
+  pthread_mutex_lock(&shared_rsc_lock);
   (*counter_client)++;
-  pthread_mutex_unlock(counter_lock);
-  
+    
   // Set the data for the client.  
   thread_arg = malloc(sizeof(struct thread_arg_s));
   thread_arg->current_client_id = id;
   thread_arg->clients = clients;
   thread_arg->counter_client = counter_client;
-  thread_arg->counter_lock = counter_lock;
   
   // Save the client socket.
-  (clients + id)->socket = socket_acc;
+  clients[id].socket = socket_acc;
  
+  pthread_mutex_unlock(&shared_rsc_lock);
   
   // Start a thread that will handle the client.
   if(pthread_create(&thread_client, NULL, handle_client, (void*) thread_arg)){
@@ -291,7 +324,6 @@ int main(int argc, char * argv[])
 
   int i, socket_server, port, counter_client;
   CLIENT *clients = NULL;
-  pthread_mutex_t counter_lock = PTHREAD_MUTEX_INITIALIZER;
 
   if(argc < 2){
     printf("Bad usage: %s [port_number]\n", argv[0]);
@@ -303,6 +335,7 @@ int main(int argc, char * argv[])
   clients = malloc(CLIENT_MAX * sizeof(struct CLIENT));
   for(i = 0; i < CLIENT_MAX; i++){
     clients[i].socket = 0;
+    clients[i].pseudo = NULL;
   }
   socket_server = create_socket_server(port);
   
@@ -314,7 +347,7 @@ int main(int argc, char * argv[])
   
   while(1){
     if(counter_client < CLIENT_MAX){
-      if(accept_client(socket_server, clients, &counter_client, &counter_lock) < 0){
+      if(accept_client(socket_server, clients, &counter_client) < 0){
 	return -1;
       }
     }  

@@ -305,13 +305,16 @@ int identify_to_server(int socket_client)
   // Concatene the two string together.
   snprintf(buffer, PSEUDO_MAX_SIZE + MAX_KEY_SIZE + 1, "%s:%s", pseudo, key );
   if(write(socket_client, buffer, strlen(buffer) + 1) < 0){
+    printf("Cannot write to the server.\n");
     return -1;
   }
+
   if(read(socket_client, answer, BUF_SIZ) <= 0){
     printf("Cannot read from the server.\n");
     return -1;
   }
   printf("%s\n", answer);
+
   if(strcmp(answer, CONNECTION_SUCCESS) == 0){
     return 0;
   }
@@ -346,15 +349,16 @@ int main(int argc, char * argv[])
 
   // Connect to the remote server.
   if(connect(socket_client , (struct sockaddr *)&server , sizeof(server)) < 0){
-    perror("Connection failed");
+    perror("Connection failed.\n");
     return 1;
   }
 
   // Send the credential to the server.
   if(identify_to_server(socket_client) < 0){  
+    printf("Identification to the server failed.\n");
     return -1;
   }
-
+  
   init_sig();
   // Set the ncurses parameters.
   initscr();

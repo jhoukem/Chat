@@ -2,6 +2,5 @@ Simple client/server chat application in C.
 Clone this repository, cd into it and then type "make".
 If you haven't ncurses installed already, do so by typing: "sudo apt-get install libncurses-dev" and relaunch the make.
 After the sources are compiled, launch the client as follow:
-./client [server_address] [port] [your_pseudo]
-There is several bugs known such as:
-The get_input function is bugged because sometimes the output is messed up.
+./client [server_address] [port]
+There is a bug with the get_input function, sometimes the output is messed up.
