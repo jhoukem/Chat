@@ -16,6 +16,8 @@ struct thread_arg_s
 };
 typedef struct thread_arg_s * arg_s;
 
+int is_command(char *msg);
+void process_command(char *msg, CLIENT *clients, int current_client_id, int *quit_flag);
 void * handle_client(void *arg);
 int get_client_id(CLIENT *clients);
 int client_connected(CLIENT client);
