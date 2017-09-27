@@ -26,6 +26,7 @@
 
 pthread_mutex_t ncurse_lock = PTHREAD_MUTEX_INITIALIZER;
 time_t lastInput;
+int delay_for_afk;
 
 
 void handle_resize(WINDOW *input, WINDOW *chat)
@@ -297,15 +298,13 @@ void * handle_listen(void * arg)
 
 int is_absent()
 {
-  return (time(NULL) - lastInput) > 5; 
+  return (time(NULL) - lastInput) > delay_for_afk; 
 }
 
 void send_notify()
 {
-  char cwd[512];
-  char *dir = getcwd(cwd, sizeof(cwd));
   char icon_path[520];
-  snprintf(icon_path, 520, "%s/msg.png", dir);
+  snprintf(icon_path, 520, "%s/msg.png", getcwd(NULL, 512));
   char *argument[] = {"notify-send", "-i", icon_path, "New message", NULL};
   switch(fork()){
   case 0 : execv("/usr/bin/notify-send", argument);
@@ -349,6 +348,53 @@ int identify_to_server(int socket_client)
   return -1;
 }
 
+int is_integer(char *string)
+{
+  char c;
+  int i;
+
+  for(i = 0; string[i] != 0; i++){
+      c = string[i];
+      if(c < '0' || c > '9'){
+          return 0;
+      }
+  }
+  return 1;
+}
+
+void handle_arg(int argc, char **argv)
+{
+  char *options = "-t:h";
+  int current_option;
+  char help[512];
+
+  snprintf(help, 512, "Usage:\n%s [host_address] [port_number] [options]\n\nThe following options are availables:\n"
+  "-h,          Show this help menu\n"
+  "-t,          Set the time in second before being considered afk (default 10sec)\n", argv[0]);
+
+  delay_for_afk = 15;
+
+  if(argc < 3){
+    fprintf(stderr, "%s", help);
+    exit(-1);
+  }
+  
+  while((current_option = getopt(argc, argv, options)) != -1){
+    
+    switch(current_option){    
+    case 't':
+      if(is_integer(optarg)){
+	delay_for_afk = atoi(optarg);
+      } else {
+	fprintf(stderr, "Error: The value for -%c should be an integer.\n", current_option);
+	exit(-1);
+      }
+      break;
+    case 'h': printf("%s", help); exit(0);
+    }
+  }
+}
+
 int main(int argc, char * argv[])
 {
 
@@ -359,10 +405,7 @@ int main(int argc, char * argv[])
   
   struct sockaddr_in server;
 
-  if(argc < 3){
-    printf("Bad usage: %s [host_address] [port_number]\n", argv[0]);
-    return -1;
-  }
+  handle_arg(argc, argv);
 
   // Set the server to connect parameters.
   hostname_to_ip(argv[1], ip);
