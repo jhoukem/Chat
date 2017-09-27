@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include <ncurses.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include "socket.h"
 #include "client.h"
 #include "util.h"
@@ -23,6 +25,8 @@
 #define CONNECTION_SUCCESS "Connection successful"
 
 pthread_mutex_t ncurse_lock = PTHREAD_MUTEX_INITIALIZER;
+time_t lastInput;
+
 
 void handle_resize(WINDOW *input, WINDOW *chat)
 {
@@ -100,8 +104,9 @@ int get_input(WINDOW *input, WINDOW *chat, char **buffer, int *stop_flag)
     if(*stop_flag){
       return -1;
     }
+       
     if(ch != ERR){
-
+      time(&lastInput);
       pthread_mutex_lock(&ncurse_lock);
       
       if(ch == KEY_LEFT){
@@ -222,6 +227,7 @@ void * handle_input(void * arg)
   noecho();
   nodelay(input_arg->input, TRUE);
   keypad(input_arg->input, TRUE);
+  time(&lastInput);
 
   // Enable the scrolling.
   scrollok(input_arg->input, TRUE);
@@ -281,7 +287,29 @@ void * handle_listen(void * arg)
     // Print the text received to the chat window
     pthread_mutex_lock(&ncurse_lock);   
     add_to_chat(listen_arg, buffer);
+    
+    if(is_absent()){
+      send_notify();
+    }
     pthread_mutex_unlock(&ncurse_lock);
+  }
+}
+
+int is_absent()
+{
+  return (time(NULL) - lastInput) > 5; 
+}
+
+void send_notify()
+{
+  char cwd[512];
+  char *dir = getcwd(cwd, sizeof(cwd));
+  char icon_path[520];
+  snprintf(icon_path, 520, "%s/msg.png", dir);
+  char *argument[] = {"notify-send", "-i", icon_path, "New message", NULL};
+  switch(fork()){
+  case 0 : execv("/usr/bin/notify-send", argument);
+  default : wait(NULL); break;
   }
 }
 
