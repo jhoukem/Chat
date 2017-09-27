@@ -110,7 +110,7 @@ void process_command(char *msg, CLIENT *clients, int current_client_id, int *qui
   send = 1;
 
   if(strcmp(msg, CMD_HELP) == 0){
-    snprintf(buffer, BUF_SIZ, "List of the command availaible on this server: /help, /who, /quit.");
+    snprintf(buffer, BUF_SIZ, "List of available commands on this server: /help, /who, /quit.");
   } else if(strcmp(msg, CMD_WHO) == 0){
   
     snprintf(buffer, BUF_SIZ, "Client(s) connected: ");   

@@ -27,7 +27,7 @@
 pthread_mutex_t ncurse_lock = PTHREAD_MUTEX_INITIALIZER;
 time_t lastInput;
 int delay_for_afk;
-
+int notify_enabled;
 
 void handle_resize(WINDOW *input, WINDOW *chat)
 {
@@ -289,7 +289,7 @@ void * handle_listen(void * arg)
     pthread_mutex_lock(&ncurse_lock);   
     add_to_chat(listen_arg, buffer);
     
-    if(is_absent()){
+    if(notify_enabled && is_absent()){
       send_notify();
     }
     pthread_mutex_unlock(&ncurse_lock);
@@ -355,7 +355,8 @@ int is_integer(char *string)
 
   for(i = 0; string[i] != 0; i++){
       c = string[i];
-      if(c < '0' || c > '9'){
+      // Allow negative integer.
+      if((c < '0' || c > '9') && c != '-'){
           return 0;
       }
   }
@@ -370,9 +371,10 @@ void handle_arg(int argc, char **argv)
 
   snprintf(help, 512, "Usage:\n%s [host_address] [port_number] [options]\n\nThe following options are availables:\n"
   "-h,          Show this help menu\n"
-  "-t,          Set the time in second before being considered afk (default 10sec)\n", argv[0]);
+  "-t,          Set the time in seconds before being considered afk (10 sec by default, setting it to -1 disable the notifications)\n", argv[0]);
 
   delay_for_afk = 15;
+  
 
   if(argc < 3){
     fprintf(stderr, "%s", help);
@@ -392,6 +394,11 @@ void handle_arg(int argc, char **argv)
       break;
     case 'h': printf("%s", help); exit(0);
     }
+  }
+  if(delay_for_afk > 0 && (access("/usr/bin/notify-send", X_OK) == 0)){
+    notify_enabled = 1;
+  } else {
+    notify_enabled = 0;
   }
 }
 
