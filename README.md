@@ -2,7 +2,7 @@
 A simple client/server chat application written in C.  
 
 ## Installation guide
-The project rely on ncurses librairy so if you don't have it installed on your system, do so by typing:  
+The project rely on ncurses library so if you don't have it installed on your system, do so by typing:  
 `$ sudo apt-get install libncurses-dev`
 
 Then simply compile the sources:  
